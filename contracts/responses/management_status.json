@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "management_status.json",
+  "title": "Management status without credentials",
+  "type": "object",
+  "properties": {
+    "configured": {"type": "boolean"},
+    "state": {"type": "string"},
+    "reason": {"type": "string"},
+    "installation_id": {"type": ["string", "null"]},
+    "service_url": {"type": ["string", "null"]},
+    "last_checked_at": {"type": ["string", "null"]},
+    "version": {"type": "string"}
+  },
+  "required": ["configured", "state", "reason", "installation_id", "service_url", "last_checked_at", "version"],
+  "additionalProperties": false
+}

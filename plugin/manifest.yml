@@ -1,0 +1,13 @@
+name: rhinomcp-studio
+version: 0.6.1
+authors:
+  - Jingcheng Chen
+description: RhinoMCP Studio - managed Codex integration and architectural modeling. Based on Jingcheng Chen's RhinoMCP.
+keywords:
+  - rhinomcp
+  - mcp
+  - rhino
+  - ai
+  - prompt
+  - modelcontextprotocol
+url: 'https://github.com/catsony5-web/rhinomcp-studio'

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "create_wall.json",
+  "title": "Create Wall Command",
+  "description": "Create one straight closed Brep wall with optional rectangular openings, in document units. Baseline is horizontal and centered in wall thickness; height goes +Z.",
+  "type": "object",
+  "properties": {
+    "start": { "$ref": "#/$defs/point" },
+    "end": { "$ref": "#/$defs/point" },
+    "height": { "type": "number", "exclusiveMinimum": 0 },
+    "thickness": { "type": "number", "exclusiveMinimum": 0 },
+    "openings": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "properties": {
+          "offset": { "type": "number", "exclusiveMinimum": 0, "description": "Distance from start along the baseline to the opening left edge" },
+          "width": { "type": "number", "exclusiveMinimum": 0 },
+          "bottom": { "type": "number", "minimum": 0, "description": "Height above wall base; zero creates a door notch" },
+          "height": { "type": "number", "exclusiveMinimum": 0 }
+        },
+        "required": ["offset", "width", "bottom", "height"],
+        "additionalProperties": false
+      }
+    },
+    "layer": { "type": "string", "minLength": 1, "description": "Existing layer full path or GUID; default is current layer" },
+    "name": { "type": "string" }
+  },
+  "required": ["start", "end", "height", "thickness"],
+  "additionalProperties": false,
+  "$defs": {
+    "point": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    }
+  }
+}

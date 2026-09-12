@@ -1,0 +1,7 @@
+{
+    email {$ACME_EMAIL}
+}
+
+{$MCP_DOMAIN} {
+    reverse_proxy control:8765
+}

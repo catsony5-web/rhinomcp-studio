@@ -1,0 +1,171 @@
+name: Studio distribution
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_draft:
+        description: 'Create a draft GitHub Release after public service validation'
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - 'distribution/**'
+      - 'management/**'
+      - 'plugin/Management/**'
+      - 'management-client-tests/**'
+      - 'docs/INSTALL_KO.md'
+      - 'docs/RELEASE_KO.md'
+      - '.github/workflows/distribution.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  installer-tests:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s distribution/tests -v
+      - name: Check shell syntax
+        if: runner.os != 'Windows'
+        run: bash -n distribution/bootstrap.sh distribution/install.sh distribution/doctor.sh distribution/uninstall.sh
+      - name: Check PowerShell syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem distribution/*.ps1 | ForEach-Object {
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$parseErrors) | Out-Null
+            if ($parseErrors) { throw ($parseErrors | Out-String) }
+          }
+
+  management-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+      - run: python -m pip install -r management/requirements.txt
+      - run: python -m unittest discover -s management/tests -v
+      - run: python -m unittest discover -s distribution/tests -p test_release.py -v
+      - run: dotnet run --project management-client-tests --configuration Release
+
+  build:
+    if: github.event_name == 'workflow_dispatch'
+    needs: [installer-tests, management-tests]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+      - uses: astral-sh/setup-uv@v8.2.0
+        with:
+          version: '0.11.28'
+      - name: Read package version
+        id: version
+        run: |
+          python - <<'PY'
+          import os, pathlib, re, tomllib
+          version = tomllib.loads(pathlib.Path('server/pyproject.toml').read_text())['project']['version']
+          if not re.fullmatch(r'\d+\.\d+\.\d+', version):
+              raise SystemExit('Public releases require major.minor.patch versions.')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'value={version}\n')
+          PY
+      - name: Download the McNeel Yak packager
+        run: |
+          mkdir -p .tools
+          curl --fail --location --proto '=https' https://files.mcneel.com/yak/tools/0.13.0/linux-x64/yak -o .tools/yak
+          chmod +x .tools/yak
+      - name: Build the versioned ZIP
+        env:
+          MANAGEMENT_PROFILE: ${{ vars.RHINO_MCP_MANAGEMENT_PROFILE }}
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, sys
+          sys.path.insert(0, 'distribution')
+          from validate_release import public_profile
+          value = os.environ.get('MANAGEMENT_PROFILE', '')
+          if not value:
+              raise SystemExit('Set RHINO_MCP_MANAGEMENT_PROFILE to the exported public HTTPS profile before building a distribution.')
+          profile = public_profile(json.loads(value), resolve=True)
+          pathlib.Path('.tools/management-server.json').write_text(json.dumps(profile), encoding='utf-8')
+          PY
+          python distribution/build.py --yak "$PWD/.tools/yak" --management-profile .tools/management-server.json
+      - name: Validate package and live management approval
+        timeout-minutes: 2
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          python -m pip install cryptography==50.0.1
+          python distribution/validate_release.py "dist/rhinomcp-studio-${RELEASE_VERSION}.zip" --expected-version "$RELEASE_VERSION" --check-service
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rhinomcp-studio-distribution
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'workflow_dispatch' && inputs.create_draft
+    needs: build
+    runs-on: ubuntu-latest
+    environment: public-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v8
+        with:
+          name: rhinomcp-studio-distribution
+          path: dist
+      - name: Validate downloaded assets
+        timeout-minutes: 2
+        env:
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          python -m pip install cryptography==50.0.1
+          python distribution/validate_release.py "dist/rhinomcp-studio-${RELEASE_VERSION}.zip" --expected-version "$RELEASE_VERSION" --check-service
+      - name: Create draft with installation assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/v${RELEASE_VERSION}" > /dev/null; then
+            echo 'The release tag already exists. Use a new patch version; existing tags are preserved.' >&2
+            exit 1
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then
+              echo 'Could not verify the remote release tag. Draft creation was stopped.' >&2
+              exit "$status"
+            fi
+          fi
+          gh release create "v${RELEASE_VERSION}" \
+            "dist/rhinomcp-studio-${RELEASE_VERSION}.zip" \
+            "dist/rhinomcp-studio-${RELEASE_VERSION}.zip.sha256" \
+            --draft --target "$RELEASE_COMMIT" \
+            --title "RhinoMCP Studio ${RELEASE_VERSION}" \
+            --notes-file docs/RELEASE_KO.md

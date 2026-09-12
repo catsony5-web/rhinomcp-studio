@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "create_floor_slab.json",
+  "title": "Create Floor Slab Command",
+  "description": "Create one closed Brep slab from horizontal coordinate polygons. outer[0].z is the top elevation and positive thickness goes downward in world -Z. Units are document units.",
+  "type": "object",
+  "properties": {
+    "outer": { "$ref": "#/$defs/polygon" },
+    "thickness": { "type": "number", "exclusiveMinimum": 0 },
+    "holes": {
+      "type": "array",
+      "default": [],
+      "items": { "$ref": "#/$defs/polygon" },
+      "description": "Holes strictly inside the outer polygon, with no crossing, touching or nesting"
+    },
+    "layer": { "type": "string", "minLength": 1, "description": "Existing layer full path or GUID; default is current layer" },
+    "name": { "type": "string" }
+  },
+  "required": ["outer", "thickness"],
+  "additionalProperties": false,
+  "$defs": {
+    "point": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "polygon": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/point" },
+      "minItems": 3,
+      "description": "Ordered [x,y,z] vertices; closing vertex is optional; all Z values must equal the outer top elevation within document tolerance"
+    }
+  }
+}

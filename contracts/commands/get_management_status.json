@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_management_status.json",
+  "title": "Local Management Status",
+  "description": "Read registration and the last authorization result without executing a Rhino modeling command.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
