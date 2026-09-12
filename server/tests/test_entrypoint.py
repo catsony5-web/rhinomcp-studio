@@ -14,13 +14,14 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SPEC = importlib.util.spec_from_file_location("entrypoint_installer", ROOT / "distribution/manager.py")
-installer = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(installer)
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="The installer manager requires Python 3.11+ and provisions Python 3.12; server-only Python 3.10 is tested separately.")
 async def test_installed_command_discovers_tools_and_serves_guidance_without_rhino(tmp_path):
+    spec = importlib.util.spec_from_file_location("entrypoint_installer", ROOT / "distribution/manager.py")
+    installer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
     settings = installer.server_settings(Path(sys.executable))
     # Reserve an unused port without listening, so no real Rhino can be reached.
     with socket.socket() as reserved_port:
